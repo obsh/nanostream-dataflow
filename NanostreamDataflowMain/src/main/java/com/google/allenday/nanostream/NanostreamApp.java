@@ -26,6 +26,7 @@ import com.google.allenday.nanostream.util.EntityNamer;
 import com.google.allenday.nanostream.util.trasform.RemoveValueDoFn;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
+import htsjdk.samtools.fastq.FastqRecord;
 import japsa.seq.Sequence;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubIO;
@@ -101,8 +102,14 @@ public class NanostreamApp {
                 .apply("Get data from FastQ", ParDo.of(new GetDataFromFastQFile()))
                 .apply("Parse FastQ data", ParDo.of(new ParseFastQFn()))
                 .apply(options.getAlignmentWindow() + "s FastQ collect window",
-                        Window.into(FixedWindows.of(Duration.standardSeconds(options.getAlignmentWindow()))))
-                .apply("Create batches of "+ FASTQ_GROUPING_BATCH_SIZE +" FastQ records",
+                        Window.<FastqRecord>into(FixedWindows.of(Duration.standardSeconds(options.getAlignmentWindow())))
+                                .triggering(Repeatedly.forever(AfterProcessingTime
+                                        .pastFirstElementInPane()
+                                        .plusDelayOf(Duration.standardSeconds(options.getStatisticUpdatingDelay()))))
+                                .withAllowedLateness(Duration.ZERO)
+                                .discardingFiredPanes()
+                )
+                .apply("Create batches of " + FASTQ_GROUPING_BATCH_SIZE + " FastQ records",
                         new BatchByN(FASTQ_GROUPING_BATCH_SIZE))
                 .apply("Alignment", ParDo.of(injector.getInstance(MakeAlignmentViaHttpFn.class)))
                 .apply("Extract Sequences",
@@ -120,11 +127,11 @@ public class NanostreamApp {
                         : ParDo.of(injector.getInstance(GetTaxonomyFromTree.class)))
                 .apply("Global Window with Repeatedly triggering" + options.getStatisticUpdatingDelay(),
                         Window.<KV<String, GeneData>>into(new GlobalWindows())
-                        .triggering(Repeatedly.forever(AfterProcessingTime
-                                .pastFirstElementInPane()
-                                .plusDelayOf(Duration.standardSeconds(options.getStatisticUpdatingDelay()))))
-                        .withAllowedLateness(Duration.ZERO)
-                        .accumulatingFiredPanes())
+                                .triggering(Repeatedly.forever(AfterProcessingTime
+                                        .pastFirstElementInPane()
+                                        .plusDelayOf(Duration.standardSeconds(options.getStatisticUpdatingDelay()))))
+                                .withAllowedLateness(Duration.ZERO)
+                                .accumulatingFiredPanes())
                 .apply("Accumulate results to Map", Combine.globally(new KVCalculationAccumulatorFn()))
                 .apply("Prepare sequences statistic to output",
                         ParDo.of(injector.getInstance(PrepareSequencesStatisticToOutputDbFn.class)))
