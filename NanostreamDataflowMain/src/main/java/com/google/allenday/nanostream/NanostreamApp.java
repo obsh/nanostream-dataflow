@@ -32,10 +32,7 @@ import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubIO;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubMessage;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
-import org.apache.beam.sdk.transforms.Combine;
-import org.apache.beam.sdk.transforms.GroupByKey;
-import org.apache.beam.sdk.transforms.ParDo;
-import org.apache.beam.sdk.transforms.View;
+import org.apache.beam.sdk.transforms.*;
 import org.apache.beam.sdk.transforms.windowing.*;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
@@ -51,7 +48,7 @@ import java.util.stream.Stream;
  */
 public class NanostreamApp {
 
-    private static final int FASTQ_GROUPING_BATCH_SIZE = 200;
+    private static final int FASTQ_GROUPING_BATCH_SIZE = 2000;
 
     public enum ProcessingMode {
         SPECIES("species"),
@@ -114,7 +111,8 @@ public class NanostreamApp {
                 .apply("Alignment", ParDo.of(injector.getInstance(MakeAlignmentViaHttpFn.class)))
                 .apply("Extract Sequences",
                         ParDo.of(new GetSequencesFromSamDataFn()))
-                .apply("Group by SAM reference", GroupByKey.create())
+//                .apply("Group by SAM reference", GroupByKey.create())
+                .apply(GroupIntoBatches.ofSize(20))
                 .apply("K-Align", ParDo.of(injector.getInstance(ProceedKAlignmentFn.class)))
                 .apply("Error correction", ParDo.of(new ErrorCorrectionFn()));
 
@@ -137,13 +135,6 @@ public class NanostreamApp {
                         ParDo.of(injector.getInstance(PrepareSequencesStatisticToOutputDbFn.class)))
                 .apply("Write sequences statistic to Firestore",
                         ParDo.of(injector.getInstance(WriteSequencesStatisticToFirestoreDbFn.class)));
-
-        errorCorrectedCollection
-                .apply("Prepare sequences bodies to output",
-                        ParDo.of(new PrepareSequencesBodiesToOutputDbFn()))
-                .apply("Write sequences bodies to Firestore",
-                        ParDo.of(injector.getInstance(WriteSequencesBodiesToFirestoreDbFn.class)));
-
 
         pipeline.run();
     }

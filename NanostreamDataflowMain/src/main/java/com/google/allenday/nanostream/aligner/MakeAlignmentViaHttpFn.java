@@ -19,6 +19,7 @@ public class MakeAlignmentViaHttpFn extends DoFn<Iterable<FastqRecord>, String> 
 
     private final static String DATABASE_MULTIPART_KEY = "database";
     private final static String FASTQ_DATA_MULTIPART_KEY = "fastq";
+    private static final String ARGS_MULTIPART_KEY = "args";
 
     private Logger LOG = LoggerFactory.getLogger(MakeAlignmentViaHttpFn.class);
 
@@ -41,6 +42,7 @@ public class MakeAlignmentViaHttpFn extends DoFn<Iterable<FastqRecord>, String> 
         Map<String, String> content = new HashMap<>();
         content.put(DATABASE_MULTIPART_KEY, database);
         content.put(FASTQ_DATA_MULTIPART_KEY, prepareFastQData(data));
+        content.put(ARGS_MULTIPART_KEY, "-t 8");
 
         try {
             LOG.info(String.format("Sending Alignment request (#%s) with %d elements...", content.hashCode(),
